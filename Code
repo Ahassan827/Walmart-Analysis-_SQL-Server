@@ -1,0 +1,211 @@
+## Cleaning
+
+Select top 5 *
+From dbo.Walmart
+
+
+
+Select *
+from dbo.Walmart
+where Branch is null
+or  city is null
+or  category is null
+or unit_price is null
+or quantity is null
+or date is null
+or time is null
+or payment_method is null
+or Rating is null
+or profit_margin is null
+
+
+Delete from dbo.Walmart
+where unit_price is null
+and quantity is null
+
+
+Select invoice_id, count(*) as [Number Of Duplicates]
+from dbo.Walmart
+group by invoice_id
+having count(*)>1
+
+With duplicatedItems as (
+
+Select invoice_id, count(*) as [Number Of Duplicates]
+from dbo.Walmart
+group by invoice_id
+having count(*)>1)
+
+select sum ([Number Of Duplicates] -1)as [Total Duplicates]
+from duplicatedItems
+
+
+
+
+
+    ;WITH CTE AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY 
+                invoice_id,
+                branch,
+                city,
+                category,
+                date,
+                time,
+                unit_price,
+                quantity,
+                payment_method,
+                rating,
+                profit_margin
+            Order BY (SELECT NULL)
+         )AS rn
+    FROM dbo.Walmart
+)
+SELECT *
+FROM CTE
+WHERE rn > 1;
+
+
+
+;WITH CTE AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY 
+                invoice_id,
+                branch,
+                city,
+                category,
+                date,
+                time,
+                unit_price,
+                quantity,
+                payment_method,
+                rating,
+                profit_margin
+            ORDER BY (SELECT NULL)
+        ) AS rn
+    FROM dbo.Walmart
+)
+DELETE FROM CTE
+WHERE rn > 1;
+
+alter table dbo.walmart
+add Total_Sales decimal (10,2)
+
+Update dbo.Walmart
+set Total_Sales = quantity * unit_price
+
+alter table dbo.walmart
+add Profit decimal (10,2)
+
+Update dbo.Walmart
+set Profit = Total_Sales * profit_margin
+
+Select *
+from dbo.Walmart
+
+
+
+##Questions 
+
+
+----- What are the different payment methods, and how many transactions and items were sold with each method?
+
+select payment_method , count(*) as No_Payments , sum(quantity)as No_Quantity
+from dbo.Walmart
+Group By payment_method
+
+
+----  dentify the Highest-Rated Category in Each Branch , Which category received the highest average rating in each branch?
+
+SELECT Branch, Category, AvgRating
+FROM (
+    SELECT 
+        Branch,
+        Category,
+        AVG(Rating) AS AvgRating,
+        RANK() OVER (PARTITION BY Branch ORDER BY AVG(Rating) DESC) AS Rnk
+    FROM dbo.Walmart
+    GROUP BY Branch, Category
+) AS t
+WHERE Rnk = 1;
+
+
+------ What is the busiest day of the week for each branch based on transaction volume?
+
+SELECT Branch, DayName, TotalVisits
+FROM (
+    SELECT 
+        Branch,
+        DATENAME(WEEKDAY, Date) AS DayName,
+        COUNT(*) AS TotalVisits,
+        RANK() OVER (PARTITION BY Branch ORDER BY COUNT(*) DESC) AS Rnk
+    FROM dbo.Walmart
+    GROUP BY Branch, DATENAME(WEEKDAY, Date)
+) AS t
+WHERE Rnk = 1;
+
+
+------What are the average, minimum, and maximum ratings for each category in each city?
+
+Select city , category , min(rating) as minrank, max(rating)as maxrank, avg(rating) as avgrank
+from dbo .Walmart
+group by City , category
+
+
+----- what is the total profit for each category, ranked from highest to lowest?
+
+Select category, sum(Profit) as Profit
+from dbo.Walmart
+group by category
+
+
+
+ ------ What is the most frequently used payment method in each branch?
+
+
+ SELECT Branch, payment_method,notransactions
+FROM (
+    SELECT 
+      Branch, Payment_method, count(*) as notransactions,
+        RANK() OVER (PARTITION BY Branch ORDER BY COUNT(*) DESC) AS Rnk
+    FROM dbo.Walmart
+    GROUP BY Branch, payment_method
+) as t
+WHERE Rnk = 1;
+
+
+------How many transactions occur in each shift (Morning, Afternoon, Evening) across branches?
+
+select Branch,case when Datepart(hour , time) < 12 then ' morning'
+  when  Datepart(hour , time) between 12 and 17 then ' afternoon'
+ else 'evening'
+ end as timeofday , count(*)
+ from dbo.Walmart
+ group by Branch , case when Datepart(hour , time) < 12 then ' morning'
+  when  Datepart(hour , time) between 12 and 17 then ' afternoon'
+ else 'evening'
+ end 
+ order by Branch , count (*) desc
+
+
+ ----- Which branches experienced the largest decrease in revenue compared to the previous year?
+
+ with revenue_2022 as (
+ select branch , year(date) as salesyear , sum(total_sales) as revenue
+ from dbo.Walmart
+ where year(date) = 2022
+ group by Branch ,year(date) ),
+
+  revenue_2023 as (
+ select branch , year(date) as salesyear , sum(total_sales) as revenue
+ from dbo.Walmart
+  where year(date) = 2023 
+ group by Branch ,year(date))
+  select ls.Branch ,ls.revenue as revenue_2022 ,cs.revenue as revenue_2023 
+  from revenue_2022 ls
+  join revenue_2023 cs
+  on ls. Branch = cs.Branch
+  where ls.revenue>cs.revenue
+  order by ls.Branch asc
